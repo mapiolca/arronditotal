@@ -3,6 +3,7 @@
 ## Not Released
 
 ## Release 1.4
+- FIX : Compat V22 - *02/10/2025* - 1.4.2
 - FIX : COMPAT V21 - *06/01/2025* - 1.4.1
 - NEW : COMPAT V20 - *25/07/2024* - 1.4.0
 
