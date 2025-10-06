@@ -66,7 +66,9 @@
         // FR: Prépare les pointeurs nécessaires pour gérer la ligne de rattrapage ainsi que le cache produit.
         // EN: Prepare the pointers used for the adjustment line and the product cache.
         $lastLine = false;
+        $lastLineId = 0;
         $lastEligibleLine = false;
+        $lastEligibleLineId = 0;
         $productCache = array();
         foreach ($object->lines as $line)
         {
@@ -118,9 +120,28 @@
                         // EN: Remember the last updated line and, when possible, the one eligible for the adjustment.
                         if (empty($line->_arronditotal_min_price_locked)) {
                                 $lastEligibleLine = $line;
+                                $lastEligibleLineId = $line->id;
                         }
                         $lastLine = $line;
+                        $lastLineId = $line->id;
                 }
+        }
+
+        // FR: Recharge l'objet pour s'assurer que les totaux reflètent les prix réellement sauvegardés.
+        // EN: Reload the object to ensure totals reflect the prices that were actually saved.
+        $object->fetch($fk_object);
+
+        $linesById = array();
+        foreach ($object->lines as $reloadedLine) {
+                $linesById[$reloadedLine->id] = $reloadedLine;
+        }
+
+        if ($lastEligibleLineId && isset($linesById[$lastEligibleLineId])) {
+                $lastEligibleLine = $linesById[$lastEligibleLineId];
+        }
+
+        if ($lastLineId && isset($linesById[$lastLineId])) {
+                $lastLine = $linesById[$lastLineId];
         }
 
         if ($lastEligibleLine) {
@@ -133,8 +154,6 @@
         {
                 // FR: Ajoute à la ligne finale la différence de centimes restante.
                 // EN: Add the remaining cent difference to the final line.
-                $lastLine->fetch($lastLine->id);
-
                 if (getDolGlobalString('ARRONDITOTAL_B2B')) $tx_tva = 1;
                 else $tx_tva = 1 + ($lastLine->tva_tx / 100);
 
