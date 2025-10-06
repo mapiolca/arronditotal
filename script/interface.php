@@ -3,9 +3,10 @@
 	if (!defined("NOTOKENRENEWAL")) define('NOTOKENRENEWAL', 1);
 
 	require('../config.php');
-	dol_include_once('/comm/propal/class/propal.class.php');
-	dol_include_once('/commande/class/commande.class.php');
-	dol_include_once('/compta/facture/class/facture.class.php');
+        dol_include_once('/comm/propal/class/propal.class.php');
+        dol_include_once('/commande/class/commande.class.php');
+        dol_include_once('/compta/facture/class/facture.class.php');
+        dol_include_once('/product/class/product.class.php');
 
 	$newTotal = GETPOST('newTotal');
 	$newTotal = price2num($newTotal);
@@ -41,12 +42,15 @@
 		}
 	}
 
-	$lastLine = false;
-	foreach ($object->lines as $line)
-	{
-		if (getDolGlobalString('ARRONDITOTAL_B2B'))
-		{
-			$tx_tva = 1;
+        $lastLine = false;
+        $lastEligibleLine = false;
+        $productCache = array();
+        foreach ($object->lines as $line)
+        {
+                $lineWasUpdated = false;
+                if (getDolGlobalString('ARRONDITOTAL_B2B'))
+                {
+                        $tx_tva = 1;
 			$pu = $line->subprice;
 		}
 		else
@@ -58,51 +62,164 @@
 		$pu = $pu * $coef; // on applique le coef de réduction
 		$pu = $pu / $tx_tva; // calcul du nouvel ht unitaire
 
-		if (getDolGlobalString('ARRONDITOTAL_QTY_NEEDED_TO_UPDATE'))
-		{
-			if ($line->qty == getDolGlobalString('ARRONDITOTAL_QTY_NEEDED_TO_UPDATE'))
-			{
+                if (getDolGlobalString('ARRONDITOTAL_QTY_NEEDED_TO_UPDATE'))
+                {
+                        if ($line->qty == getDolGlobalString('ARRONDITOTAL_QTY_NEEDED_TO_UPDATE'))
+                        {
 
-			    if(empty($line->special_code)) {
-			        _updateElementLine($object, $line, $pu);
-				    $lastLine = $line;
-			    }
+                            if(empty($line->special_code)) {
+                                $pu = _arronditotalProtectMinPrice($line, $pu, $productCache);
+                                _updateElementLine($object, $line, $pu);
+                                    $lineWasUpdated = true;
+                            }
 
-			}
-		}
-		else
-		{
-		    if(empty($line->special_code))  {
-		        _updateElementLine($object, $line, $pu);
-			    $lastLine = $line;
-		    }
-		}
+                        }
+                }
+                else
+                {
+                    if(empty($line->special_code))  {
+                        $pu = _arronditotalProtectMinPrice($line, $pu, $productCache);
+                        _updateElementLine($object, $line, $pu);
+                            $lineWasUpdated = true;
+                    }
+                }
 
-	}
+                if ($lineWasUpdated) {
+                        if (empty($line->_arronditotal_min_price_locked)) {
+                                $lastEligibleLine = $line;
+                        }
+                        $lastLine = $line;
+                }
+        }
 
-	if ($lastLine)
-	{
-		// on ajoute à la dernière ligne la différence de centime
-		$lastLine->fetch($lastLine->id);
+        if ($lastEligibleLine) {
+                $lastLine = $lastEligibleLine;
+        }
 
-		if (getDolGlobalString('ARRONDITOTAL_B2B')) $tx_tva = 1;
-		else $tx_tva = 1 + ($lastLine->tva_tx / 100);
+        if ($lastLine)
+        {
+                // on ajoute à la dernière ligne la différence de centime
+                $lastLine->fetch($lastLine->id);
 
-		$diff_compta = $newTotal - $object->{$field_total}; // diff entre le total voulu et le nouveau total calculé (décalage de centimes)
-		$diff_compta = $diff_compta / $lastLine->qty; // diff à diviser par la qty car on doit obtenir au final un prix unitaire
-		$pu = $lastLine->subprice * $tx_tva; // calcul du ttc unitaire
-		$pu = $pu + $diff_compta;
-		$pu = $pu / $tx_tva; // calcul du nouvel ht unitaire
+                if (getDolGlobalString('ARRONDITOTAL_B2B')) $tx_tva = 1;
+                else $tx_tva = 1 + ($lastLine->tva_tx / 100);
 
-		_updateElementLine($object, $lastLine, $pu);
+                $diff_compta = $newTotal - $object->{$field_total}; // diff entre le total voulu et le nouveau total calculé (décalage de centimes)
+                $diff_compta = $diff_compta / $lastLine->qty; // diff à diviser par la qty car on doit obtenir au final un prix unitaire
+                $pu = $lastLine->subprice * $tx_tva; // calcul du ttc unitaire
+                $pu = $pu + $diff_compta;
+                $pu = $pu / $tx_tva; // calcul du nouvel ht unitaire
 
-		$outputlangs = &_getOutPutLangs($object);
-		$object->generateDocument('', $outputlangs);
-	}
-	else
-	{
-		setEventMessages($langs->trans('arronditotalErrorNoLine'), null, 'errors');
-	}
+                $pu = _arronditotalProtectMinPrice($lastLine, $pu, $productCache, true);
+
+                _updateElementLine($object, $lastLine, $pu);
+
+                $outputlangs = &_getOutPutLangs($object);
+                $object->generateDocument('', $outputlangs);
+        }
+        else
+        {
+                setEventMessages($langs->trans('arronditotalErrorNoLine'), null, 'errors');
+        }
+
+        function _arronditotalProtectMinPrice(&$line, $pu, &$productCache, $forceReload = false)
+        {
+                $pu = price2num($pu, 'MU');
+
+                $minPrice = _arronditotalGetLineMinPrice($line, $productCache, $forceReload);
+                $canIgnore = _arronditotalCanIgnoreMinPrice($line);
+
+                $line->_arronditotal_min_price = $minPrice;
+                $line->_arronditotal_can_ignore_min_price = $canIgnore;
+                $line->_arronditotal_min_price_locked = 0;
+
+                if ($minPrice !== null && !$canIgnore && price2num($pu, 'MU') < $minPrice) {
+                        $pu = $minPrice;
+                        $line->_arronditotal_min_price_locked = 1;
+                }
+
+                return $pu;
+        }
+
+        function _arronditotalGetLineMinPrice(&$line, &$productCache, $forceReload = false)
+        {
+                global $db;
+
+                if (empty($line->fk_product)) return null;
+
+                if ($forceReload || !array_key_exists($line->fk_product, $productCache)) {
+                        $product = new Product($db);
+                        if ($product->fetch($line->fk_product) > 0) {
+                                $productCache[$line->fk_product] = array(
+                                        'price_min' => price2num($product->price_min, 'MU')
+                                );
+                        } else {
+                                $productCache[$line->fk_product] = null;
+                        }
+                }
+
+                $productData = $productCache[$line->fk_product];
+                if (!empty($productData) && isset($productData['price_min'])) {
+                        return price2num($productData['price_min'], 'MU');
+                }
+
+                return null;
+        }
+
+        function _arronditotalCanIgnoreMinPrice(&$line)
+        {
+                global $user;
+
+                if (empty($user) || empty($user->rights)) return false;
+
+                $paths = array(
+                        array('produit', 'price', 'ignore_min_price'),
+                        array('produit', 'ignore_min_price'),
+                        array('produit', 'price', 'ignore_price_min'),
+                        array('produit', 'ignore_price_min'),
+                        array('produit', 'price', 'ignore_price_limit'),
+                        array('produit', 'ignore_price_limit')
+                );
+
+                if (!empty($line->product_type) && (int) $line->product_type === Product::TYPE_SERVICE) {
+                        $paths = array_merge($paths, array(
+                                array('service', 'price', 'ignore_min_price'),
+                                array('service', 'ignore_min_price'),
+                                array('service', 'price', 'ignore_price_min'),
+                                array('service', 'ignore_price_min'),
+                                array('service', 'price', 'ignore_price_limit'),
+                                array('service', 'ignore_price_limit')
+                        ));
+                }
+
+                foreach ($paths as $path) {
+                        if (_arronditotalRightPathEnabled($user->rights, $path)) {
+                                return true;
+                        }
+                }
+
+                return false;
+        }
+
+        function _arronditotalRightPathEnabled($rights, $path)
+        {
+                $cursor = $rights;
+                foreach ($path as $segment) {
+                        if (is_object($cursor) && isset($cursor->{$segment})) {
+                                $cursor = $cursor->{$segment};
+                        } elseif (is_array($cursor) && isset($cursor[$segment])) {
+                                $cursor = $cursor[$segment];
+                        } else {
+                                return false;
+                        }
+                }
+
+                if (is_array($cursor)) {
+                        return !empty($cursor);
+                }
+
+                return !empty($cursor);
+        }
 
 	function _exitOrNot(&$object, $className)
 	{
