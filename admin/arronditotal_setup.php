@@ -223,13 +223,10 @@ print '<td align="right" width="300">';
 print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'">';
 print '<input type="hidden" name="token" value="'.$newToken.'">';
 print '<input type="hidden" name="action" value="set_ARRONDITOTAL_PRODUITS_IGNORES">';
-print '<select name="ARRONDITOTAL_PRODUITS_IGNORES[]" class="flat minwidth300" multiple size="6">';
-foreach ($ignoredProductsOptions as $productId => $productLabel)
-	{
-	$selected = isset($ignoredProductsSelected[$productId]) ? ' selected="selected"' : '';
-	print '<option value="'.$productId.'"'.$selected.'>'.$productLabel.'</option>';
-}
-print '</select>&nbsp;';
+// Render multi-select using Dolibarr standard widget (EN)
+// Afficher la multi-sélection via le composant standard Dolibarr (FR)
+print $form->multiselectarray('ARRONDITOTAL_PRODUITS_IGNORES', $ignoredProductsOptions, $ignoredProductsSelected, 0, 0, 'minwidth300', 0, 0, '', 0, '', '', '', 1);
+print '&nbsp;';
 print '<input type="submit" class="button" value="'.$langs->trans("Modify").'">';
 print '</form>';
 print '</td></tr>';
