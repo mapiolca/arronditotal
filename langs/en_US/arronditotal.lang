@@ -24,3 +24,6 @@ arronditotalNewTotalTTC=New total TTC
 arronditotalErrorNoLine=Error : no line found to calculate the new total
 arronditotalErrorObjectNotDraft=Error : the document is not draft status
 arronditotalErrorTypeInvoice=Error : the type of invoice is not compatible with the functionality
+
+# WARN
+arronditotalMinPriceGuard=Warning: price adjusted to the minimum allowed sale price for %s
