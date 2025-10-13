@@ -12,6 +12,8 @@ arronditotalAddButtonOnPropal=Add button on proposals
 arronditotalAddButtonOnOrder=Add button on customers orders
 arronditotalAddButtonOnInvoice=Add button on customers invoices
 arronditotalUpdateLineWithQty=Quantity necessary on each line to recalculate (empty to take all lines)
+arronditotalProduitsIgnores=Products and services to ignore when rounding the total
+arronditotalProduitsIgnoresHelp=Select products or services that must not be updated by the rounding
 
 # DOCUMENT
 arronditotalLabelButton=Update total
