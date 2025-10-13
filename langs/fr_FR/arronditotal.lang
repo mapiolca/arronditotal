@@ -12,6 +12,8 @@ arronditotalAddButtonOnPropal=Ajouter le bouton sur les propositions commerciale
 arronditotalAddButtonOnOrder=Ajouter le bouton sur les commandes clients
 arronditotalAddButtonOnInvoice=Ajouter le bouton sur les factures clients
 arronditotalUpdateLineWithQty=Quantité nécessaire sur les lignes pour re-calculer (vide pour prendre toutes les lignes)
+arronditotalProduitsIgnores=Produits et services à ignorer lors de l'arrondi du total
+arronditotalProduitsIgnoresHelp=Sélectionnez les produits ou services qui ne doivent pas être modifiés par l'arrondi
 
 # DOCUMENT
 arronditotalLabelButton=Modifier total

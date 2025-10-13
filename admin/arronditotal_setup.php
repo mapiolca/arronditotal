@@ -49,14 +49,26 @@ $action = GETPOST('action', 'alpha');
 if (preg_match('/set_(.*)/',$action,$reg))
 {
 	$code=$reg[1];
-	if (dolibarr_set_const($db, $code, GETPOST($code), 'chaine', 0, '', $conf->entity) > 0)
+	$value = GETPOST($code, 'array');
+	// Normalize multiselect values if provided (EN)
+	// Normaliser les valeurs multi-sélection si fournies (FR)
+	if (is_array($value))
 	{
-		header("Location: ".$_SERVER["PHP_SELF"]);
-		exit;
+	$value = array_filter(array_map('intval', $value));
+	$value = implode(',', $value);
 	}
 	else
 	{
-		dol_print_error($db);
+	$value = GETPOST($code);
+	}
+	if (dolibarr_set_const($db, $code, $value, 'chaine', 0, '', $conf->entity) > 0)
+	{
+	header("Location: ".$_SERVER["PHP_SELF"]);
+	exit;
+	}
+	else
+	{
+	dol_print_error($db);
 	}
 }
 
@@ -99,6 +111,39 @@ print dol_get_fiche_head(
 // Setup page goes here
 $form=new Form($db);
 $var=false;
+
+$ignoredProductsSelected = array();
+// Retrieve ignored product/service identifiers from configuration (EN)
+// Récupérer les identifiants de produits/services ignorés depuis la configuration (FR)
+$ignoredProductsRaw = explode(',', (string) getDolGlobalString('ARRONDITOTAL_PRODUITS_IGNORES'));
+foreach ($ignoredProductsRaw as $ignoredProductRaw)
+	{
+	$ignoredProductId = (int) trim($ignoredProductRaw);
+	if ($ignoredProductId > 0)
+	{
+	$ignoredProductsSelected[$ignoredProductId] = $ignoredProductId;
+	}
+}
+
+$ignoredProductsOptions = array();
+// Build the selectable list of products/services to ignore (EN)
+// Construire la liste sélectionnable des produits/services à ignorer (FR)
+$sql = 'SELECT rowid, ref, label, fk_product_type FROM '.MAIN_DB_PREFIX."product";
+$sql .= ' WHERE entity IN ('.getEntity('product', 1).')';
+$sql .= ' ORDER BY ref ASC';
+$resql = $db->query($sql);
+if ($resql)
+	{
+	while ($obj = $db->fetch_object($resql))
+	{
+	$typeLabel = ((int) $obj->fk_product_type === 1) ? $langs->trans('Service') : $langs->trans('Product');
+	$ignoredProductsOptions[$obj->rowid] = dol_escape_htmltag($obj->ref.' - '.$obj->label.' ('.$typeLabel.')');
+	}
+}
+else
+{
+	dol_print_error($db);
+}
 print '<table class="noborder" width="100%">';
 print '<tr class="liste_titre">';
 print '<td>'.$langs->trans("Parameters").'</td>'."\n";
@@ -166,6 +211,25 @@ print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'">';
 print '<input type="hidden" name="token" value="'.$newToken.'">';
 print '<input type="hidden" name="action" value="set_ARRONDITOTAL_QTY_NEEDED_TO_UPDATE">';
 print '<input type="text" name="ARRONDITOTAL_QTY_NEEDED_TO_UPDATE" value="' . getDolGlobalString('ARRONDITOTAL_QTY_NEEDED_TO_UPDATE').'" size="5" />&nbsp;';
+print '<input type="submit" class="button" value="'.$langs->trans("Modify").'">';
+print '</form>';
+print '</td></tr>';
+
+$var=!$var;
+print '<tr '.$bc[$var].'>';
+print '<td>'.$langs->trans("arronditotalProduitsIgnores").'<br><span class="opacitymedium">'.$langs->trans("arronditotalProduitsIgnoresHelp").'</span></td>';
+print '<td align="center" width="20">&nbsp;</td>';
+print '<td align="right" width="300">';
+print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'">';
+print '<input type="hidden" name="token" value="'.$newToken.'">';
+print '<input type="hidden" name="action" value="set_ARRONDITOTAL_PRODUITS_IGNORES">';
+print '<select name="ARRONDITOTAL_PRODUITS_IGNORES[]" class="flat minwidth300" multiple size="6">';
+foreach ($ignoredProductsOptions as $productId => $productLabel)
+	{
+	$selected = isset($ignoredProductsSelected[$productId]) ? ' selected="selected"' : '';
+	print '<option value="'.$productId.'"'.$selected.'>'.$productLabel.'</option>';
+}
+print '</select>&nbsp;';
 print '<input type="submit" class="button" value="'.$langs->trans("Modify").'">';
 print '</form>';
 print '</td></tr>';

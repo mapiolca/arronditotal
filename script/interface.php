@@ -42,15 +42,33 @@
 	}
 
 	$lastLine = false;
+	$ignoredProducts = array();
+	// Load ignored product/service identifiers for rounding (EN)
+	// Charger les identifiants de produits/services à ignorer pour l'arrondi (FR)
+	$ignoredRaw = explode(',', (string) getDolGlobalString('ARRONDITOTAL_PRODUITS_IGNORES'));
+	foreach ($ignoredRaw as $ignoredId)
+	{
+	$ignoredId = (int) trim($ignoredId);
+	if ($ignoredId > 0)
+	{
+	$ignoredProducts[$ignoredId] = true;
+	}
+	}
 	foreach ($object->lines as $line)
 	{
-		if (getDolGlobalString('ARRONDITOTAL_B2B'))
-		{
+	if (!empty($ignoredProducts) && !empty($line->fk_product) && !empty($ignoredProducts[(int) $line->fk_product]))
+	{
+	// Skip rounding on explicitly ignored products/services (EN)
+	// Ignorer l'arrondi sur les produits/services explicitement exclus (FR)
+	continue;
+	}
+	if (getDolGlobalString('ARRONDITOTAL_B2B'))
+	{
 			$tx_tva = 1;
 			$pu = $line->subprice;
 		}
-		else
-		{
+	else
+	{
 			$tx_tva = 1 + ($line->tva_tx / 100);
 			$pu = $line->subprice * $tx_tva; // calcul du ttc unitaire
 		}
