@@ -187,8 +187,8 @@ function _shouldUseLatestCustomerPriceRule()
 {
 	global $conf;
 
-	// Determine if the latest product price table must be used (EN)
-	// Déterminer si la table des prix produits doit être utilisée pour le dernier prix (FR)
+	// Determine if customer price rules force reading the last minimum price (EN)
+	// Déterminer si les règles clients imposent la lecture du dernier prix minimum (FR)
 	static $useLatest = null;
 	if ($useLatest !== null)
 	{
@@ -196,26 +196,22 @@ function _shouldUseLatestCustomerPriceRule()
 	}
 
 	$useLatest = false;
-	$candidates = array(
-	'MAIN_PRODUCT_RULES_FOR_CUSTOMER_PRICES',
-	'PRODUIT_CUSTOMER_PRICE_RULES',
-	'PRODUIT_CUSTOMER_PRICES_RULES',
-	'PRODUCT_CUSTOMER_PRICE_RULES',
-	'PRODUIT_MULTIPRICES_RULES'
+	$consts = array(
+		'PRODUIT_CUSTOMER_PRICES',
+		'PRODUIT_CUSTOMER_PRICES_AND_MULTIPRICES',
+		'PRODUIT_CUSTOMER_PRICES_BY_QTY',
+		'PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES',
+		'PRODUIT_MULTIPRICES'
 	);
 
-	foreach ($candidates as $constName)
+	foreach ($consts as $constName)
 	{
-		if (!empty($conf->global->{$constName}))
+		if (!empty($conf->global->{$constName}) && ((int) $conf->global->{$constName}) === 1)
 		{
-			$value = strtolower((string) $conf->global->{$constName});
-			// Detect configuration values meaning "use last price" (EN)
-			// Détecter les valeurs de configuration signifiant "utiliser le dernier prix" (FR)
-			if ($value === '1' || $value === '2' || $value === 'lastprice' || $value === 'last' || $value === 'recent' || $value === 'latest' || $value === 'lastcustomerprice')
-			{
-				$useLatest = true;
-				break;
-			}
+			// Enforce the latest minimum price from product price history (EN)
+			// Imposer le dernier prix minimum issu de l'historique des prix produits (FR)
+			$useLatest = true;
+			break;
 		}
 	}
 
