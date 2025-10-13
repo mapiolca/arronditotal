@@ -1,5 +1,36 @@
 <?php
-	if (!defined("NOCSRFCHECK")) define('NOCSRFCHECK', 1);
+/* Arronditotal interface helper for minimum price guard and rounding adjustments.
+ * Interface d'arronditotal gérant la protection du prix minimum et les ajustements d'arrondi.
+ * Copyright (C) 2025 Pierre Ardoin <developpeur@lesmetiersdubatiment.fr>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Ce programme est un logiciel libre : vous pouvez le redistribuer et/ou le modifier
+ * selon les termes de la Licence Publique Générale GNU publiée par
+ * la Free Software Foundation, soit la version 3 de la licence, soit
+ * (à votre convenance) toute version ultérieure.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * Ce programme est distribué dans l'espoir qu'il sera utile,
+ * mais SANS AUCUNE GARANTIE ; sans même la garantie implicite de
+ * QUALITÉ MARCHANDE ou D'ADÉQUATION À UN USAGE PARTICULIER. Voir la
+ * Licence Publique Générale GNU pour plus de détails.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Vous devriez avoir reçu une copie de la Licence Publique Générale GNU
+ * avec ce programme. Si ce n'est pas le cas, consultez <http://www.gnu.org/licenses/>.
+ */
+
+if (!defined("NOCSRFCHECK")) define('NOCSRFCHECK', 1);
 	if (!defined("NOTOKENRENEWAL")) define('NOTOKENRENEWAL', 1);
 
 	require('../config.php');
@@ -152,80 +183,158 @@
 
 	}
 
-	
-	function _applyMinimumSalePriceGuard(&$line, $pu)
+function _shouldUseLatestCustomerPriceRule()
+{
+	global $conf;
+
+	// Determine if the latest product price table must be used (EN)
+	// Déterminer si la table des prix produits doit être utilisée pour le dernier prix (FR)
+	static $useLatest = null;
+	if ($useLatest !== null)
 	{
-		global $user, $langs, $db;
+		return $useLatest;
+	}
 
-		// Determine if the user can ignore the minimum sale price restriction (EN)
-		// Déterminer si l'utilisateur peut ignorer la restriction du prix de vente minimum (FR)
-		$userCanIgnoreMinPrice = (is_object($user) && !empty($user->rights->produit->ignore_price_min));
+	$useLatest = false;
+	$candidates = array(
+	'MAIN_PRODUCT_RULES_FOR_CUSTOMER_PRICES',
+	'PRODUIT_CUSTOMER_PRICE_RULES',
+	'PRODUIT_CUSTOMER_PRICES_RULES',
+	'PRODUCT_CUSTOMER_PRICE_RULES',
+	'PRODUIT_MULTIPRICES_RULES'
+	);
 
-		if ($userCanIgnoreMinPrice)
+	foreach ($candidates as $constName)
+	{
+		if (!empty($conf->global->{$constName}))
 		{
-			return $pu;
-		}
-
-		// Skip guard when the line is not linked to a product/service (EN)
-		// Ignorer la protection lorsque la ligne n'est pas liée à un produit/service (FR)
-		if (empty($line->fk_product))
-		{
-			return $pu;
-		}
-
-		// Cache product data and avoid duplicate warnings for performance and clarity (EN)
-		// Mettre en cache les données produit et éviter les avertissements en doublon pour les performances et la clarté (FR)
-		static $minPriceCache = array();
-		static $warnedProducts = array();
-		$productId = (int) $line->fk_product;
-
-		// Fetch product data once to access the minimum sale price (EN)
-		// Récupérer les données du produit une seule fois pour accéder au prix de vente minimum (FR)
-		if (!array_key_exists($productId, $minPriceCache))
-		{
-			$product = new Product($db);
-			if ($product->fetch($productId) > 0)
+			$value = strtolower((string) $conf->global->{$constName});
+			// Detect configuration values meaning "use last price" (EN)
+			// Détecter les valeurs de configuration signifiant "utiliser le dernier prix" (FR)
+			if ($value === '1' || $value === '2' || $value === 'lastprice' || $value === 'last' || $value === 'recent' || $value === 'latest' || $value === 'lastcustomerprice')
 			{
-				$minPriceCache[$productId] = price2num($product->price_min, 'MU');
-				$minPriceCache[$productId . '_ref'] = $product->ref;
-			}
-			else
-			{
-				$minPriceCache[$productId] = null;
-				$minPriceCache[$productId . '_ref'] = '';
+				$useLatest = true;
+				break;
 			}
 		}
+	}
 
-		$priceMin = $minPriceCache[$productId];
+	return $useLatest;
+}
 
-		// No minimum price configured, so original price can be used (EN)
-		// Aucun prix minimum configuré, on conserve donc le prix initial (FR)
-		if (empty($priceMin))
+function _getMinimumSalePriceData($productId)
+{
+	global $db, $conf;
+
+	// Cache retrieved data for performance (EN)
+	// Mettre en cache les données récupérées pour la performance (FR)
+	static $cache = array();
+	$productId = (int) $productId;
+
+	if (isset($cache[$productId]))
+	{
+		return $cache[$productId];
+	}
+
+	$data = array(
+	'price_min' => null,
+	'ref' => ''
+	);
+
+	$product = new Product($db);
+	if ($product->fetch($productId) > 0)
+	{
+		// Store reference for warning messages (EN)
+		// Stocker la référence pour les messages d'avertissement (FR)
+		$data['ref'] = $product->ref;
+		$data['price_min'] = price2num($product->price_min, 'MU');
+
+		if (_shouldUseLatestCustomerPriceRule())
 		{
-			return $pu;
-		}
+			$sql = 'SELECT price_min FROM '.MAIN_DB_PREFIX."product_price";
+			$sql .= ' WHERE fk_product = '.((int) $productId);
+			$entityFilter = function_exists('getEntity') ? getEntity('product_price') : ((int) $conf->entity);
+			$sql .= ' AND entity IN ('.$entityFilter.')';
+			$sql .= ' ORDER BY date_price DESC, rowid DESC LIMIT 1';
 
-		// Normalize computed price to numeric value for reliable comparison (EN)
-		// Normaliser le prix calculé en valeur numérique pour une comparaison fiable (FR)
-		$computedPu = price2num($pu, 'MU');
-
-		if ($computedPu < $priceMin)
-		{
-			if (empty($warnedProducts[$productId]))
+			$resql = $db->query($sql);
+			if ($resql)
 			{
-				// Ensure rounded price respects minimum sale price when permission is missing (EN)
-				// Garantir que le prix arrondi respecte le prix de vente minimum si la permission manque (FR)
-				setEventMessages($langs->trans('arronditotalMinPriceGuard', $minPriceCache[$productId . '_ref']), null, 'warnings');
-				$warnedProducts[$productId] = true;
+				$obj = $db->fetch_object($resql);
+				if ($obj)
+				{
+					// Use the last recorded minimum price when available (EN)
+					// Utiliser le dernier prix minimum enregistré lorsqu'il est disponible (FR)
+					if ($obj->price_min !== null)
+					{
+						$data['price_min'] = price2num($obj->price_min, 'MU');
+					}
+				}
+				$db->free($resql);
 			}
-
-			return $priceMin;
 		}
+	}
 
+	$cache[$productId] = $data;
+	return $data;
+}
+
+function _applyMinimumSalePriceGuard(&$line, $pu)
+{
+	global $user, $langs;
+
+	// Determine if the user can ignore the minimum sale price restriction (EN)
+	// Déterminer si l'utilisateur peut ignorer la restriction du prix de vente minimum (FR)
+	$userCanIgnoreMinPrice = (is_object($user) && !empty($user->rights->produit->ignore_price_min));
+
+	if ($userCanIgnoreMinPrice)
+	{
 		return $pu;
 	}
 
-	function _updateElementLine(&$object, &$line, $pu)
+	// Skip guard when the line is not linked to a product/service (EN)
+	// Ignorer la protection lorsque la ligne n'est pas liée à un produit/service (FR)
+	if (empty($line->fk_product))
+	{
+		return $pu;
+	}
+
+	// Cache product data and avoid duplicate warnings for performance and clarity (EN)
+	// Mettre en cache les données produit et éviter les avertissements en doublon pour les performances et la clarté (FR)
+	static $warnedProducts = array();
+	$productId = (int) $line->fk_product;
+
+	$minimumData = _getMinimumSalePriceData($productId);
+	$priceMin = $minimumData['price_min'];
+
+	// No minimum price configured, so original price can be used (EN)
+	// Aucun prix minimum configuré, on conserve donc le prix initial (FR)
+	if ($priceMin === null)
+	{
+		return $pu;
+	}
+
+	// Normalize computed price to numeric value for reliable comparison (EN)
+	// Normaliser le prix calculé en valeur numérique pour une comparaison fiable (FR)
+	$computedPu = price2num($pu, 'MU');
+
+	if ($computedPu < $priceMin)
+	{
+		if (empty($warnedProducts[$productId]))
+		{
+			// Ensure rounded price respects minimum sale price when permission is missing (EN)
+			// Garantir que le prix arrondi respecte le prix de vente minimum si la permission manque (FR)
+			setEventMessages($langs->trans('arronditotalMinPriceGuard', $minimumData['ref']), null, 'warnings');
+			$warnedProducts[$productId] = true;
+		}
+
+		return $priceMin;
+	}
+
+	return $pu;
+}
+
+function _updateElementLine(&$object, &$line, $pu)
 	{
 		// Apply minimum sale price guard before updating the line (EN)
 		// Appliquer la protection du prix de vente minimum avant la mise à jour de la ligne (FR)
