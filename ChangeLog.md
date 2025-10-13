@@ -2,6 +2,7 @@
 
 ## Not Released
 - NEW : Possibilité d'ignorer des produits/services lors de l'arrondi du total
+- FIX : Empêche l'arrondi de passer sous le prix de vente minimum sans permission
 
 ## Release 1.4
 - FIX : Compat V22 - *02/10/2025* - 1.4.2

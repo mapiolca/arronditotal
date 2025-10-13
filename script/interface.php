@@ -6,6 +6,17 @@
 	dol_include_once('/comm/propal/class/propal.class.php');
 	dol_include_once('/commande/class/commande.class.php');
 	dol_include_once('/compta/facture/class/facture.class.php');
+	// Include product class to retrieve minimum sale price information (EN)
+	// Inclure la classe produit pour récupérer les informations de prix de vente minimum (FR)
+	dol_include_once('/product/class/product.class.php');
+
+	global $langs;
+	if (is_object($langs))
+	{
+		// Load module translation strings for notices (EN)
+		// Charger les traductions du module pour les avertissements (FR)
+		$langs->load('arronditotal@arronditotal');
+	}
 
 	$newTotal = GETPOST('newTotal');
 	$newTotal = price2num($newTotal);
@@ -141,8 +152,85 @@
 
 	}
 
+	
+	function _applyMinimumSalePriceGuard(&$line, $pu)
+	{
+		global $user, $langs, $db;
+
+		// Determine if the user can ignore the minimum sale price restriction (EN)
+		// Déterminer si l'utilisateur peut ignorer la restriction du prix de vente minimum (FR)
+		$userCanIgnoreMinPrice = (is_object($user) && !empty($user->rights->produit->ignore_price_min));
+
+		if ($userCanIgnoreMinPrice)
+		{
+			return $pu;
+		}
+
+		// Skip guard when the line is not linked to a product/service (EN)
+		// Ignorer la protection lorsque la ligne n'est pas liée à un produit/service (FR)
+		if (empty($line->fk_product))
+		{
+			return $pu;
+		}
+
+		// Cache product data and avoid duplicate warnings for performance and clarity (EN)
+		// Mettre en cache les données produit et éviter les avertissements en doublon pour les performances et la clarté (FR)
+		static $minPriceCache = array();
+		static $warnedProducts = array();
+		$productId = (int) $line->fk_product;
+
+		// Fetch product data once to access the minimum sale price (EN)
+		// Récupérer les données du produit une seule fois pour accéder au prix de vente minimum (FR)
+		if (!array_key_exists($productId, $minPriceCache))
+		{
+			$product = new Product($db);
+			if ($product->fetch($productId) > 0)
+			{
+				$minPriceCache[$productId] = price2num($product->price_min, 'MU');
+				$minPriceCache[$productId . '_ref'] = $product->ref;
+			}
+			else
+			{
+				$minPriceCache[$productId] = null;
+				$minPriceCache[$productId . '_ref'] = '';
+			}
+		}
+
+		$priceMin = $minPriceCache[$productId];
+
+		// No minimum price configured, so original price can be used (EN)
+		// Aucun prix minimum configuré, on conserve donc le prix initial (FR)
+		if (empty($priceMin))
+		{
+			return $pu;
+		}
+
+		// Normalize computed price to numeric value for reliable comparison (EN)
+		// Normaliser le prix calculé en valeur numérique pour une comparaison fiable (FR)
+		$computedPu = price2num($pu, 'MU');
+
+		if ($computedPu < $priceMin)
+		{
+			if (empty($warnedProducts[$productId]))
+			{
+				// Ensure rounded price respects minimum sale price when permission is missing (EN)
+				// Garantir que le prix arrondi respecte le prix de vente minimum si la permission manque (FR)
+				setEventMessages($langs->trans('arronditotalMinPriceGuard', $minPriceCache[$productId . '_ref']), null, 'warnings');
+				$warnedProducts[$productId] = true;
+			}
+
+			return $priceMin;
+		}
+
+		return $pu;
+	}
+
 	function _updateElementLine(&$object, &$line, $pu)
 	{
+		// Apply minimum sale price guard before updating the line (EN)
+		// Appliquer la protection du prix de vente minimum avant la mise à jour de la ligne (FR)
+		$pu = _applyMinimumSalePriceGuard($line, $pu);
+
 		switch ($object->element)
 		{
 			case 'propal':
