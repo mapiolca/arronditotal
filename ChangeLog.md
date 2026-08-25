@@ -6,6 +6,7 @@
 - FIX : Respecte la règle « Règles pour les prix clients » via les constantes Dolibarr pour déterminer le prix minimum
 
 ## Release 1.4
+- FIX : Supprime la propriété dynamique obsolète du descripteur sous PHP 8.2 - *25/08/2026* - 1.4.3
 - FIX : Compat V22 - *02/10/2025* - 1.4.2
 - FIX : COMPAT V21 - *06/01/2025* - 1.4.1
 - NEW : COMPAT V20 - *25/07/2024* - 1.4.0
